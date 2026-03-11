@@ -203,6 +203,10 @@ def main():
         st.session_state.last_update_ts = 0.0
     if "last_b2" not in st.session_state:
         st.session_state.last_b2 = ""
+    if "last_c2" not in st.session_state:
+        st.session_state.last_c2 = ""
+    if "flash_start_time" not in st.session_state:
+        st.session_state.flash_start_time = None  # 점멸 시작 시각 (float 또는 None)
 
     placeholder = st.empty()
 
@@ -229,9 +233,21 @@ def main():
     changed = current_hash != st.session_state.last_hash
     current_b2 = get_b2_value(df)
     current_c2 = get_c2_value(df)
-    flash_on = current_c2 == "1"
 
-    # 화면: A열(내용)만 표시. B(소리)·C(점멸) 열은 절대 표시하지 않음. C=1이면 30초간 점멸
+    # C열이 1로 바뀌는 순간을 감지해 점멸 시작 시각 기록. 30초 지나면 점멸 중단
+    if current_c2 == "1" and st.session_state.last_c2 != "1":
+        st.session_state.flash_start_time = time.time()
+    if current_c2 != "1":
+        st.session_state.flash_start_time = None
+    st.session_state.last_c2 = current_c2
+
+    flash_start = st.session_state.flash_start_time
+    elapsed = (time.time() - flash_start) if flash_start else 999
+    if flash_start is not None and elapsed > 30.0:
+        st.session_state.flash_start_time = None  # 30초 지나면 점멸 종료
+    flash_on = current_c2 == "1" and st.session_state.flash_start_time is not None
+
+    # 화면: A열(내용)만 표시. 점멸은 시작 후 30초만 유지, 이후 원래 화면으로
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
