@@ -1,3 +1,4 @@
+import base64
 import time
 import hashlib
 from typing import Optional
@@ -5,6 +6,19 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+
+def play_sound(file_path: str) -> None:
+    """WAV 파일을 base64로 인코딩해 HTML5 오디오로 1회 재생."""
+    with open(file_path, "rb") as f:
+        data = f.read()
+        b64 = base64.b64encode(data).decode()
+        md = f"""
+            <audio autoplay="true">
+            <source src="data:audio/wav;base64,{b64}" type="audio/wav">
+            </audio>
+            """
+        st.markdown(md, unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=20)
@@ -42,15 +56,11 @@ def df_hash(df: Optional[pd.DataFrame]) -> str:
     return hashlib.md5(normalized.encode("utf-8")).hexdigest()
 
 
-def play_ding():
-    """변경 시 1회 재생용 오디오 태그 (HTML5, components 사용)."""
-    audio_html = """
-    <audio autoplay>
-        <source src="ding.wav" type="audio/wav">
-        Your browser does not support the audio element.
-    </audio>
-    """
-    components.html(audio_html, height=0)
+def get_b2_value(df: pd.DataFrame) -> str:
+    """구글 시트 CSV에서 B2 셀 값 반환 (2행 2열 = iloc[0, 1])."""
+    if df is None or df.empty or len(df.columns) < 2:
+        return ""
+    return str(df.iloc[0, 1]).strip()
 
 
 def render_board(df: Optional[pd.DataFrame]):
@@ -183,6 +193,8 @@ def main():
         st.session_state.last_hash = ""
     if "last_update_ts" not in st.session_state:
         st.session_state.last_update_ts = 0.0
+    if "last_b2" not in st.session_state:
+        st.session_state.last_b2 = ""
 
     placeholder = st.empty()
 
@@ -207,18 +219,21 @@ def main():
 
     current_hash = df_hash(df)
     changed = current_hash != st.session_state.last_hash
+    current_b2 = get_b2_value(df)
 
-    # 변경된 경우에만 화면 갱신 + 소리 재생
+    # 화면: 내용이 바뀌었을 때만 전광판 갱신
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
-        with placeholder:
-            render_board(df)
-        play_ding()
+    with placeholder:
+        render_board(df)
+
+    # B2가 '1'이 될 때만 ding.wav 재생 (이전 값이 '1'이 아니었다가 '1'이 된 순간에만)
+    if current_b2 == "1" and st.session_state.last_b2 != "1":
+        play_sound("ding.wav")
+        st.session_state.last_b2 = "1"
     else:
-        # 기존 화면을 유지하기 위해, 직전에 그렸던 데이터가 없으면 한 번만 그림
-        with placeholder:
-            render_board(df)
+        st.session_state.last_b2 = current_b2
 
     # 브라우저 자동 재생 정책 안내 (아주 작은 글씨로 하단에 표시)
     st.markdown(
