@@ -2,6 +2,7 @@ import base64
 import time
 import hashlib
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -10,17 +11,51 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 
-def play_sound(file_path: str) -> None:
-    """WAV 파일을 base64로 인코딩해 HTML5 오디오로 1회 재생."""
-    with open(file_path, "rb") as f:
-        data = f.read()
-        b64 = base64.b64encode(data).decode()
-        md = f"""
-            <audio autoplay="true">
-            <source src="data:audio/wav;base64,{b64}" type="audio/wav">
-            </audio>
-            """
-        st.markdown(md, unsafe_allow_html=True)
+def load_ding_base64() -> str:
+    """ding.wav를 앱 기준 경로에서 읽어 base64 문자열 반환. 실패 시 빈 문자열."""
+    try:
+        path = Path(__file__).resolve().parent / "ding.wav"
+        if not path.is_file():
+            return ""
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return ""
+
+
+def render_sound_component(trigger: str, ding_b64: str = "") -> None:
+    """
+    st.components.v1.html로 오디오 컴포넌트 주입.
+    trigger가 설정되고 localStorage에 오디오 해제된 상태일 때만 1회 재생. 중복 재생 방지.
+    ding_b64가 비어 있으면 로드 시도 후 재시도하지 않음(경로 예외 처리됨).
+    """
+    b64 = ding_b64 or load_ding_base64()
+    if not b64:
+        return
+    trigger_esc = trigger.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+    html = f"""
+    <audio id="dingAudio" preload="auto">
+        <source src="data:audio/wav;base64,{b64}" type="audio/wav">
+    </audio>
+    <script>
+    (function() {{
+        var audio = document.getElementById("dingAudio");
+        var trigger = "{trigger_esc}";
+        if (trigger) {{
+            try {{
+                if (localStorage.getItem("audioUnlocked") === "1") {{
+                    var last = localStorage.getItem("lastPlayedSoundTrigger") || "";
+                    if (last !== trigger) {{
+                        localStorage.setItem("lastPlayedSoundTrigger", trigger);
+                        audio.play().catch(function() {{}});
+                    }}
+                }}
+            }} catch (e) {{}}
+        }}
+    }})();
+    </script>
+    """
+    components.html(html, height=0)
 
 
 @st.cache_data(ttl=20)
@@ -72,8 +107,13 @@ def get_c2_value(df: pd.DataFrame) -> str:
     return str(df.iloc[0, 2]).strip()
 
 
-def render_board(df: Optional[pd.DataFrame], flash: bool = False):
-    """전광판: A열(내용)만 표시. B·C열은 화면에 절대 표시하지 않음. flash=True면 30초간 점멸."""
+def render_board(
+    df: Optional[pd.DataFrame],
+    flash: bool = False,
+    flash_elapsed: float = 0.0,
+):
+    """전광판: A열(내용)만 표시. B·C열은 화면에 절대 표시하지 않음.
+    flash=True일 때 flash_elapsed(초)만큼 animation-delay를 주어 새로고침 후에도 애니메이션이 이어지도록 함."""
     if df is None or df.empty:
         st.markdown(
             '<div class="board-text">표시할 데이터가 없습니다.</div>',
@@ -94,12 +134,18 @@ def render_board(df: Optional[pd.DataFrame], flash: bool = False):
 
     cls = "board-text flash" if flash else "board-text"
     html_lines = "<br>".join(lines)
+    if flash and flash_elapsed > 0:
+        delay_style = f" style=\"animation-delay: -{flash_elapsed:.1f}s\""
+    else:
+        delay_style = ""
     st.markdown(
-        f'<div class="{cls}">{html_lines}</div>', unsafe_allow_html=True
+        f'<div class="{cls}"{delay_style}>{html_lines}</div>',
+        unsafe_allow_html=True,
     )
 
 
 def main():
+    # Streamlit 렌더 순서: 설정 → CSS/스크립트 → 세션 초기화 → 자동 새로고침 → 데이터 로드 → 상태 갱신 → 전광판 렌더 → 소리 트리거 갱신 → 소리 컴포넌트
     st.set_page_config(
         page_title="학급 안내 전광판",
         layout="wide",
@@ -155,14 +201,14 @@ def main():
                          "Segoe UI", sans-serif;
         }
 
-        /* C열=1일 때: 30초간 1초 간격 배경/글자 반전 (노랑↔검정), 30초 후 원래 상태 */
+        /* C열=1일 때: 총 15초간 1초 간격 배경/글자 반전 (노랑↔검정), 15초 후 마지막 상태 유지(forwards) */
         @keyframes board-flash {
             0%   { background-color: #000000; color: #ffff66; }
             50%  { background-color: #ffff66; color: #000000; }
             100% { background-color: #000000; color: #ffff66; }
         }
         .board-text.flash {
-            animation: board-flash 2s linear 15 forwards;
+            animation: board-flash 1s linear 15 forwards;
         }
 
         /* 헤더/푸터 요소 등 불필요한 요소 최소화 */
@@ -188,6 +234,21 @@ def main():
         unsafe_allow_html=True,
     )
 
+    # 브라우저 정책: 메인 페이지에서 한 번이라도 클릭하면 오디오 재생 허용 (localStorage에 기록)
+    st.markdown(
+        """
+        <script>
+        (function() {
+            document.addEventListener("click", function f() {
+                document.removeEventListener("click", f);
+                try { localStorage.setItem("audioUnlocked", "1"); } catch (e) {}
+            }, { once: true });
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title(" ")  # 실제 화면에서는 숨기고 CSS로만 구성
 
     # 고정된 구글 시트 CSV URL (앱 시작 시 자동 사용)
@@ -201,7 +262,7 @@ def main():
     now_kst = datetime.now(kst)
     hour = now_kst.hour
     if 7 <= hour < 17:
-        refresh_interval = 15  # 초 (활동 시간)
+        refresh_interval = 20  # 초 (활동 시간)
     else:
         refresh_interval = 10800  # 3시간 = 10800초 (비활동 시간, 리소스 절약)
 
@@ -216,6 +277,10 @@ def main():
         st.session_state.last_c2 = ""
     if "flash_start_time" not in st.session_state:
         st.session_state.flash_start_time = None  # 점멸 시작 시각 (float 또는 None)
+    if "sound_trigger" not in st.session_state:
+        st.session_state.sound_trigger = ""  # B2가 1이 될 때만 설정, 소리 1회 재생용
+    if "ding_b64" not in st.session_state:
+        st.session_state.ding_b64 = load_ding_base64()  # 경로 예외 처리 후 한 번만 로드
 
     placeholder = st.empty()
 
@@ -252,23 +317,30 @@ def main():
 
     flash_start = st.session_state.flash_start_time
     elapsed = (time.time() - flash_start) if flash_start else 999
-    if flash_start is not None and elapsed > 30.0:
-        st.session_state.flash_start_time = None  # 30초 지나면 점멸 종료
+    if flash_start is not None and elapsed > 15.0:
+        st.session_state.flash_start_time = None  # 15초 지나면 점멸 종료
     flash_on = current_c2 == "1" and st.session_state.flash_start_time is not None
+    flash_elapsed = min(elapsed, 15.0) if flash_on else 0.0
 
-    # 화면: A열(내용)만 표시. 점멸은 시작 후 30초만 유지, 이후 원래 화면으로
+    # 화면: A열(내용)만 표시. 점멸 시 새로고침 후에도 이어지도록 flash_elapsed 반영
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
     with placeholder:
-        render_board(df, flash=flash_on)
+        render_board(df, flash=flash_on, flash_elapsed=flash_elapsed)
 
-    # B열 값이 0에서 1로 바뀔 때만 소리 1회 재생
+    # B열 값이 0→1로 바뀔 때만 sound_trigger 설정 (컴포넌트에서 1회 재생, 세션으로 중복 방지)
     if current_b2 == "1" and st.session_state.last_b2 != "1":
-        play_sound("ding.wav")
+        st.session_state.sound_trigger = str(time.time())
         st.session_state.last_b2 = "1"
     else:
         st.session_state.last_b2 = current_b2
+
+    # 소리 컴포넌트: 클릭 한 번 후 해제되면 trigger 시 1회만 재생 (ding.wav 경로 예외 처리됨)
+    render_sound_component(
+        st.session_state.get("sound_trigger", ""),
+        st.session_state.get("ding_b64", ""),
+    )
 
     # 브라우저 자동 재생 정책 안내 (아주 작은 글씨로 하단에 표시)
     st.markdown(
