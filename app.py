@@ -25,53 +25,39 @@ def load_ding_base64() -> str:
 
 def render_sound_component(trigger: str, ding_b64: str = "") -> None:
     """
-    st.components.v1.html로 오디오 컴포넌트 주입.
-    new Audio()로 재생, audioUnlocked 체크, 콘솔 로그로 디버깅 가능.
+    B2가 1이 되는 순간 무조건 new Audio().play() 실행.
+    localStorage 체크 없음. 재생 실패 시 화면에 에러 표시.
     """
     b64 = ding_b64 or load_ding_base64()
     if not b64:
+        st.error("ding.wav를 불러올 수 없습니다. (파일 경로 확인)")
         return
     trigger_esc = trigger.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
     html = f"""
+    <div id="dingError" style="display:none; background:#ff4b4b; color:#fff; padding:8px 12px; border-radius:4px; font-size:14px; margin:4px 0;"></div>
     <audio id="dingAudio" preload="auto" style="display:none">
         <source src="data:audio/wav;base64,{b64}" type="audio/wav">
     </audio>
     <script>
     (function() {{
         var trigger = "{trigger_esc}";
-        var unlocked = localStorage.getItem("audioUnlocked") === "1";
-        console.log("[ding] audioUnlocked:", unlocked, "trigger:", trigger || "(없음)");
         if (!trigger) return;
-        try {{
-            if (!unlocked) {{
-                console.log("[ding] 재생 안 함: 화면을 한 번 클릭한 뒤 다시 시도하세요.");
-                return;
-            }}
-            var last = localStorage.getItem("lastPlayedSoundTrigger") || "";
-            if (last === trigger) {{
-                console.log("[ding] 재생 안 함: 이미 재생한 trigger (중복 방지)");
-                return;
-            }}
-            var el = document.getElementById("dingAudio");
-            var dataUrl = el && el.querySelector("source") ? el.querySelector("source").src : "";
-            if (!dataUrl) {{
-                console.log("[ding] 재생 안 함: 오디오 URL 없음");
-                return;
-            }}
-            localStorage.setItem("lastPlayedSoundTrigger", trigger);
-            var audio = new Audio(dataUrl);
-            audio.play().then(function() {{
-                console.log("[ding] 재생 성공, trigger:", trigger);
-            }}).catch(function(e) {{
-                console.log("[ding] 재생 실패", e);
-            }});
-        }} catch (e) {{
-            console.log("[ding] 오류", e);
+        var el = document.getElementById("dingAudio");
+        var errEl = document.getElementById("dingError");
+        var dataUrl = el && el.querySelector("source") ? el.querySelector("source").src : "";
+        if (!dataUrl) {{
+            if (errEl) {{ errEl.textContent = "오디오 URL 없음"; errEl.style.display = "block"; }}
+            return;
         }}
+        var audio = new Audio(dataUrl);
+        audio.play().then(function() {{}}).catch(function(e) {{
+            var msg = (e && e.message) ? e.message : String(e);
+            if (errEl) {{ errEl.textContent = "소리 재생 실패: " + msg; errEl.style.display = "block"; }}
+        }});
     }})();
     </script>
     """
-    components.html(html, height=0)
+    components.html(html, height=56)
 
 
 @st.cache_data(ttl=20)
