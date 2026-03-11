@@ -101,19 +101,21 @@ def main():
     st.markdown(
         """
         <style>
-        /* 기본 배경 및 글자색 */
-        .stApp {
+        /* 기본 배경 및 글자색, 전체 여백 제거 */
+        .stApp, .main .block-container, section.main {
             background-color: #000000;
             color: #ffffff;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
         }
 
-        /* 상하좌우 여백 제거 */
         .block-container {
-            padding-top: 0rem;
-            padding-bottom: 0rem;
-            padding-left: 0rem;
-            padding-right: 0rem;
-            max-width: 100%;
+            padding-top: 0rem !important;
+            padding-bottom: 0rem !important;
+            padding-left: 0rem !important;
+            padding-right: 0rem !important;
+            max-width: 100% !important;
         }
 
         /* 스크롤바 제거 (가능한 범위에서) */
@@ -122,19 +124,23 @@ def main():
             background: transparent;
         }
 
-        /* 전광판 텍스트 스타일 */
+        /* 전광판 텍스트: 15vw, 수직 중앙보다 약간 위, 정중앙, 줄 간격 가독성 */
         .board-text {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            min-height: 100vh;
+            box-sizing: border-box;
+            margin: 0 auto;
+            padding: 0 1rem 14vh 1rem;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             text-align: center;
-            font-size: 4.5vw; /* 화면 폭 기준 매우 큰 글자 */
+            font-size: 15vw;
             font-weight: 700;
-            line-height: 1.3;
-            color: #ffff66; /* 따뜻한 노란색 */
+            line-height: 1.55;
+            letter-spacing: 0.02em;
+            color: #ffff66;
             font-family: "Pretendard", system-ui, -apple-system, BlinkMacSystemFont,
                          "Segoe UI", sans-serif;
         }
