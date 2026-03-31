@@ -11,7 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 
-def load_ding_base64() -> str:`
+def load_ding_base64() -> str:
     try:
         path = Path(__file__).resolve().parent / "ding.wav"
         if not path.is_file():
