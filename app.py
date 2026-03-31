@@ -11,7 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 
-def load_ding_base64() -> str:
+def load_ding_base64() -> str:`
     try:
         path = Path(__file__).resolve().parent / "ding.wav"
         if not path.is_file():
@@ -147,7 +147,7 @@ def render_board(
 
 def main() -> None:
     st.set_page_config(
-        page_title="학급 안내 전광판",
+        page_title="1-1 전광판",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
